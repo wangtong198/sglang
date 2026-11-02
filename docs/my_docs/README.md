@@ -13,7 +13,7 @@
 
 1. [00-规划与学习路径](00-规划与学习路径.md) — 任务拆解、文档地图、阅读顺序
 2. [01-概览：作用与竞品对比](01-概览：作用与竞品对比.md) — SGLang 解决什么问题，和 vLLM / TensorRT-LLM / TGI 的结构差异
-3. [02-启动到HTTP请求完整流程](02-启动到HTTP请求完整流程.md) — 用 DeepSeek-V4.1-Flash 的真实 config 走完启动、HTTP、以及 4 机 × 4 卡并行
+3. [02-启动到HTTP请求完整流程](02-启动到HTTP请求完整流程.md) — 按 S0–S11 拆开启动和 HTTP，并写四机四卡约束
 4. [03-模块地图](03-模块地图.md) — 目录、类、扩展点
 5. [04-特性详解](04-特性详解.md) — MTP / DSPARK、DeepEP、DP Attention 等
 6. [05-Server选项大全](05-Server选项大全.md) — LLM `ServerArgs` 584 项 + Diffusion `ServerArgs` 173 项，从源码 AST 抽出
@@ -22,6 +22,8 @@
 9. [08-Radix前缀缓存](08-Radix前缀缓存.md)
 10. [09-MoE路由与采样](09-MoE路由与采样.md)
 11. [10-多模态](10-多模态.md)
+
+调研笔记：[解析流水线](调研笔记/解析流水线.md) 列出 S2 的 hook 顺序。`调研笔记/gen_option_docs.py` 用来从源码字段重新生成 05 和 06 的中文说明。
 
 模型 config 原文：[assets/deepseek-ai_DeepSeek-V4.1-Flash_config.json](assets/deepseek-ai_DeepSeek-V4.1-Flash_config.json)。
 

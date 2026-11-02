@@ -1,73 +1,78 @@
 # 09 MoE 路由与采样
 
-## V4.1-Flash 的路由参数
+路由发生在 S10 的每一层 MoE。采样发生在 S9 的 `process_batch_result`，参数在 S8 已经收成 `SamplingParams`。两边不要混：gate 不看 temperature，sampler 不改专家表。
 
-这些数在 config 的 `text_config` 里，模型构建时读进 gate，不是 CLI。
+## V4.1-Flash 的路由常数
 
-| 字段 | 值 | 代码里的含义 |
+来自 config 的 `text_config`，S5 建 gate 时读入，不是 CLI。
+
+| 字段 | 值 | 作用 |
 | --- | --- | --- |
-| `n_routed_experts` | 384 | 可被路由的专家总数 |
-| `n_shared_experts` | 1 | 每个 token 都会经过的共享专家 |
+| `n_routed_experts` | 384 | 可被选中的专家 |
+| `n_shared_experts` | 1 | 每个 token 都经过 |
 | `num_experts_per_tok` | 6 | top-k |
-| `scoring_func` | `sqrtsoftplus` | 分数函数。`layers/moe/topk.py` 的 `TopKConfig` 注释写明 sqrtsoftplus 走 log1p，NaN 排在前面，这是 DeepSeek-V4.1 的路由 |
+| `scoring_func` | `sqrtsoftplus` | `TopKConfig` 走 log1p，NaN 排在前面 |
 | `topk_method` | `noaux_tc` | 无辅助损失的 top-k 修正 |
-| `norm_topk_prob` | true | 选中的 k 个权重再归一化 |
-| `routed_scaling_factor` | 1.5 | 路由输出的缩放 |
-| `moe_intermediate_size` | 2304 | 专家 FFN 的中间维 |
-| `expert_dtype` | `fp4` | 专家权重精度。dense 部分仍是 `quant_method=fp8`、块 32×32、`ue8m0` |
+| `norm_topk_prob` | true | k 个权重再归一化 |
+| `routed_scaling_factor` | 1.5 | 路由输出缩放 |
+| `moe_intermediate_size` | 2304 | 专家 FFN 中间维 |
+| `expert_dtype` | `fp4` | 专家权重。dense 仍是 fp8 块 32×32 |
+| `dspark_n_routed_experts` | 128 | 只属于草稿。不要按 384 去配草稿的 EP |
+| `dspark_num_experts_per_tok` | 3 | 草稿的 k |
 
-草稿侧更小：`dspark_n_routed_experts = 128`，`dspark_num_experts_per_tok = 3`。DSPARK 的 draft MoE 不要按 384 专家去配 EP。
-
-## 一次 forward 里 expert 怎么走
+## 一层里 token 怎么走
 
 ```mermaid
 flowchart LR
   H["hidden"] --> G["gate: sqrtsoftplus + noaux_tc"]
-  G --> K["top-6"]
+  G --> K["选出 6 个专家"]
   K --> D{"moe_a2a_backend"}
-  D -->|none| L["本 rank 上 TP MoE"]
-  D -->|mori / deepep / ...| A2A["all-to-all 到持有该 expert 的 rank"]
-  A2A --> R["moe_runner_backend 计算"]
-  R --> B["all-to-all 回到 token 的属主"]
-  B --> S["shared expert + routed_scaling_factor"]
+  D -->|none| L["本 rank 上按 TP 算"]
+  D -->|mori 或 deepep| A["all-to-all 到持有专家的 rank"]
+  A --> R["moe_runner_backend 做 GEMM"]
+  R --> B["all-to-all 回到 token 属主"]
+  B --> S["加上 shared expert 和缩放"]
 ```
 
-通信与计算是两个开关：
+通信和计算是两个开关，都在 S2 定稿：
 
-- `moe_a2a_backend`：token 怎么搬家。`none` 表示不搬家，专家按 TP 切。`mori`、`deepep`、`deepep_v2`、`megamoe` 等在 spanning 列表里时，解析把 `ep_size` 设为 `tp_size`，每个 rank 持有 `384 / ep_size` 个专家。16 卡就是 24 个。
-- `moe_runner_backend`：专家 GEMM 用哪个 kernel。`auto` 会按量化格式改写。V4.1 的 MXFP8 dense 在 SM100 CUDA 上会被改成 `flashinfer_cutedsl`；HIP 不走这条（`model_overrides/deepseek_v4.py` 要求 `not is_hip`）。
+| 开关 | 定稿时会发生什么 | S10 做什么 |
+| --- | --- | --- |
+| `moe_a2a_backend=none` | EP 保持声明值，通常是 1 | 专家按 TP 切开，token 不搬家 |
+| spanning 后端（`mori`、`deepep`、`deepep_v2`、`megamoe`…） | `_a2a_ep_size` 把 `ep_size` 改成 `tp_size` | 每 rank 持有 `384/ep` 个专家。16 卡是 24 个 |
+| `moe_runner_backend=auto` | 按量化改写。V4.1 的 MXFP8 dense 只在 CUDA、非 HIP、SM100 上改成 `flashinfer_cutedsl` | 真正的专家 GEMM |
 
-共享专家融合（shared experts fusion）会被一些 runner 强制关掉：`flashinfer_trtllm`、`flashinfer_cutedsl`、LoRA MoE runner（`overrides.py` `_moe_runner_fusion_disable`）。DeepEP v2 也会关。Waterfill 则要求融合开着，并把共享专家当成一个额外的 routed 槽，丢到当前最空的 EP rank。
+共享专家融合会被一些 runner 关掉：`flashinfer_trtllm`、`flashinfer_cutedsl`、LoRA MoE（`overrides.py` 的 `_moe_runner_fusion_disable`）。DeepEP v2 也会关。Waterfill 则要求融合开着，并把共享专家当成额外槽丢到最空的 EP rank。
 
-`dp_attention.py` 对 DeepEP v2 这类对称集合通信做 padding，使每个 rank 的 token 行数一致。否则 all-to-all 的形状对不上，表现为挂死或 shape assert，而不是错误的专家结果。
+`dp_attention.py` 对 DeepEP v2 这类对称集合通信做 padding，让每个 rank 的 token 行数一致。形状不齐时表现为挂死或 shape 错误，不是选错专家。
+
+四机建议是 `mori` + EP 16 + attention DP 4。attention DP 不减少专家通信。它只让 attention 留在节点内。每个 token 的 6 个专家可能在 6 个节点上，一层有两次跨节点交换（去和回）。DWDP 用权重预取代替这次交换，但 S2 禁止它和投机、CUDA graph 共存，所以 V4.1-Flash 的建议配置不走 DWDP。
 
 ## 采样
 
-HTTP 层的采样字段最终变成 `sampling/sampling_params.py` 的 `SamplingParams`。`normalize()` 之前调用方能设的是前半段；`stop_strs`、`is_normalized` 等由 `__post_init__` / `normalize` 填写。
+`sampling/sampling_params.py` 的 `SamplingParams`。`normalize()` 之前调用方设置前半段；`stop_strs`、`is_normalized` 由 `__post_init__` / `normalize` 填写。`None` 会被收成默认，所以 HTTP 里的 null 不会把温度弄成非法。
 
-| 字段 | 默认 | 说明 |
+| 字段 | 默认 | 在流程里的效果 |
 | --- | --- | --- |
-| `max_new_tokens` | 128 | `/generate` 不传时的生成长度。OpenAI chat 用 `max_completion_tokens` / 已废弃的 `max_tokens`，转换时写进这里 |
-| `temperature` | 1.0 | `None` 会被当成 1.0 |
-| `top_p` | 1.0 | |
-| `top_k` | `TOP_K_ALL`（传 `None` 时变成 -1） | |
-| `min_p` | 0.0 | |
-| `frequency_penalty` / `presence_penalty` | 0.0 | |
-| `repetition_penalty` | 1.0 | |
+| `max_new_tokens` | 128 | `/generate` 不传时的长度。OpenAI 的 `max_completion_tokens` 在 S7 写进这里 |
+| `temperature` | 1.0 | 1 是完整分布。0 附近由后端当成贪心 |
+| `top_p` | 1.0 | 1 表示不截断 |
+| `top_k` | 全部（`None` 变成 -1） | |
+| `min_p` | 0 | |
+| `frequency_penalty` / `presence_penalty` | 0 | |
+| `repetition_penalty` | 1 | 1 表示不惩罚 |
 | `stop` / `stop_token_ids` / `stop_regex` | 空 | `stop` 拷进 `stop_strs` 后清空 |
 | `n` | 1 | 并行样本数 |
-| `beam_width` | 空 | 大于 1 时变成 beam search，`n` 改成返回条数且 `n <= beam_width` |
-| `json_schema` / `regex` / `ebnf` / `structural_tag` | 空 | 交给 `constrained/GrammarManager` |
-| `ignore_eos` | false | |
-| `sampling_seed` | 空 | |
-| `logit_bias` | 空 | |
+| `beam_width` | 空 | 大于 1 时变成 beam，`n` 是返回条数且不超过 beam |
+| `json_schema` / `regex` / `ebnf` / `structural_tag` | 空 | 交给 `GrammarManager`，不在 sampler 里编译 |
+| `ignore_eos` | 假 | 真则 EOS 不结束 |
+| `sampling_seed` | 空 | 配合确定性模式 |
+| `logit_bias` | 空 | 按 token 加减 logit |
 
-采样 kernel 由 `--sampling-backend` 选，choices 是 `SAMPLING_BACKEND_CHOICES`。环境变量打开 KV canary 的 token oracle 时，`add_cli_args` 会临时把 `token_oracle` 加进 choices。
+kernel 由 `--sampling-backend` 选。环境变量打开 KV canary 的 token oracle 时，S1 会把 `token_oracle` 临时加进 choices。
 
-约束解码不在 sampler 里做完。scheduler 在 `handle_generate_request` 把带 schema 的请求放进 grammar 队列，`GrammarManager` 按 backend（xgrammar、llguidance、outlines，见 `GRAMMAR_BACKEND_CHOICES`）给出下一步的允许集合，sampler 再应用这个 mask。grammar 编译失败会在请求进入 GPU 之前返回错误，而不是生成到一半才断。
+约束解码的顺序：S9 `handle_generate_request` 把带 schema 的请求放进 grammar 队列；`GrammarManager` 按 xgrammar、llguidance 或 outlines 给出允许集合；sampler 套 mask。编译失败在进 GPU 之前返回，不会生成到一半才断。
 
-V4.1 的 reasoning 与 tool call 不在采样器里。它们是 tokenizer 侧的 parser：`deepseek-v41` reasoning parser，以及 `function_call/deepseekv41_detector.py` 的 `DeepSeekV41Detector`。`--reasoning-parser auto` 在 `init_tokenizer_manager` 里根据模板选定。采样器只看到已经被模板展开的 token。
+V4.1 的 reasoning 和 tool call 不在 sampler。它们在 S7 的 `deepseek-v41` parser 和 `DeepSeekV41Detector`。`--reasoning-parser auto` 在 S4 按模板选定。sampler 只看见模板展开后的 token。
 
-## 和四机配置的关系
-
-16 卡、`ep_size=16`、`mori` 时，每个 token 的 6 个专家可能落在 6 个不同节点。all-to-all 的流量大致是「每层、每 token、两次跨节点交换」。`attn_dp_size=4` 不减少专家通信，它只让 attention 留在节点内。若专家通信成为瓶颈，本树给出的替代是 DWDP（权重预取、不要 all-to-all），但 DWDP 禁止投机、禁止 CUDA graph、并且要求 `attn_dp_size == tp_size`。那和 DSPARK 冲突，所以 V4.1-Flash 的建议配置不走 DWDP。
+`Req.output_ids` 只追加。采样结果先写入这里，再由 S11 的 detokenizer 变成文本。流式间隔看 `stream_interval`：不是每个 token 都打一帧。
