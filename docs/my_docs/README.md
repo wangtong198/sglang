@@ -23,7 +23,7 @@
 10. [09-MoE路由与采样](09-MoE路由与采样.md)
 11. [10-多模态](10-多模态.md)
 
-调研笔记：[解析流水线](调研笔记/解析流水线.md) 列出 S2 的 hook 顺序。`调研笔记/gen_option_docs.py` 用来从源码字段重新生成 05 和 06 的中文说明。
+调研笔记：[解析流水线](调研笔记/解析流水线.md) 列出 S2 的 hook 顺序。`调研笔记/render_specific.py` 用 `zh_parts/` 里按字段写好的中文重新生成 05 和 06。缺字段会失败，不会再套同一段命名空间说明。
 
 模型 config 原文：[assets/deepseek-ai_DeepSeek-V4.1-Flash_config.json](assets/deepseek-ai_DeepSeek-V4.1-Flash_config.json)。
 
