@@ -1,430 +1,283 @@
 # 02 启动到 HTTP 请求完整流程
 
-锚点 commit：`297e54fd105e974cdf401e5b4d20253a22c16f90`。
+坐标用 00 的 S0–S11。模型例子是 `deepseek-ai/DeepSeek-V4.1-Flash`（本树没有名为 V3.1-Flash 的架构）。config 原文在 [assets/deepseek-ai_DeepSeek-V4.1-Flash_config.json](assets/deepseek-ai_DeepSeek-V4.1-Flash_config.json)。魔搭模型页确认架构是 `DeepseekV41ForCausalLM`；匿名文件接口拿不到正文，这份 JSON 来自同一模型 id 的 Hugging Face `main`。
 
-## 1.1 用哪份模型 config
-
-用户要求拿 DeepSeek-V3.1-Flash，或最接近的 “deepseekv4.1 flash”。本树里的测试、recipe 和模型类都指向：
-
-| 项 | 值 | 依据 |
-| --- | --- | --- |
-| 模型 id | `deepseek-ai/DeepSeek-V4.1-Flash` | `python/sglang/test/dsv41_flash_common.py` 的 `MODEL` |
-| 魔搭页 | `deepseek-ai/DeepSeek-V4.1-Flash` | 2026-11-02 魔搭模型 API，`Architectures = ["DeepseekV41ForCausalLM"]`，`ModelType = ["deepseek_v41"]`，Revision `master` |
-| HF 架构名 | `DeepseekV41ForCausalLM` | config 与魔搭元数据一致 |
-| 运行时类 | `DeepseekV4ForCausalLM` | `configs/deepseek_v41.py` 把 HF 架构映射到 V4 实现 |
-
-本树没有 `DeepseekV31Flash` 这类架构。V3.1 仍是 `DeepseekV3ForCausalLM`。因此后文全部对着 V4.1-Flash。
-
-**config.json 怎么拿到的。** 魔搭模型元数据接口可用。匿名文件接口 `.../repo?Revision=master&FilePath=config.json` 返回「获取模型文件失败，文件内容为空」；同一接口对 `deepseek-ai/DeepSeek-V3.1` 的 `config.json` 同样失败，目录树接口则是魔搭内部 401。所以下面这份不是从魔搭 blob 直接下到的。它是同一模型 id 在 Hugging Face `main` 上的 `config.json` 原文，架构名与魔搭声明一致。原文另存为 [assets/deepseek-ai_DeepSeek-V4.1-Flash_config.json](assets/deepseek-ai_DeepSeek-V4.1-Flash_config.json)。
-
-### config 原文
-
-```json
-{
-  "architectures": ["DeepseekV41ForCausalLM"],
-  "model_type": "deepseek_v41",
-  "dtype": "bfloat16",
-  "transformers_version": "5.6.0",
-  "bos_token_id": 0,
-  "eos_token_id": 1,
-  "pad_token_id": 2,
-  "image_token_id": 129264,
-  "quantization_config": {
-    "quant_method": "fp8",
-    "activation_scheme": "dynamic",
-    "weight_block_size": [32, 32],
-    "scale_fmt": "ue8m0",
-    "expert_dtype": "fp4"
-  },
-  "text_config": {
-    "model_type": "deepseek_v41_text",
-    "vocab_size": 129280,
-    "hidden_size": 5120,
-    "moe_intermediate_size": 2304,
-    "num_hidden_layers": 40,
-    "num_attention_heads": 64,
-    "num_key_value_heads": 1,
-    "head_dim": 512,
-    "qk_rope_head_dim": 64,
-    "q_lora_rank": 1280,
-    "o_lora_rank": 1024,
-    "o_groups": 8,
-    "hidden_act": "silu",
-    "swiglu_limit": 10.0,
-    "rms_norm_eps": 1e-20,
-    "attention_bias": false,
-    "attention_dropout": 0.0,
-    "initializer_range": 0.02,
-    "use_cache": true,
-    "tie_word_embeddings": false,
-    "max_position_embeddings": 1048576,
-    "rope_theta": 10000,
-    "rope_scaling": {
-      "rope_type": "yarn",
-      "factor": 16,
-      "beta_fast": 32,
-      "beta_slow": 1,
-      "original_max_position_embeddings": 65536
-    },
-    "n_routed_experts": 384,
-    "n_shared_experts": 1,
-    "num_experts_per_tok": 6,
-    "scoring_func": "sqrtsoftplus",
-    "topk_method": "noaux_tc",
-    "norm_topk_prob": true,
-    "routed_scaling_factor": 1.5,
-    "sliding_window": 128,
-    "compress_ratios": [0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
-    "compress_rope_theta": 160000,
-    "kv_source_layer_ids": [2, 8, 14, 20],
-    "index_source_layer_ids": [2, 8, 14, 20, 24, 28, 32, 36],
-    "index_n_heads": 32,
-    "index_head_dim": 128,
-    "index_topk": 512,
-    "candidate_source_layer_id": 20,
-    "candidate_topk_blocks": 2048,
-    "candidate_block_size": 8,
-    "hc_mult": 4,
-    "hc_sinkhorn_iters": 20,
-    "hc_eps": 1e-06,
-    "engram_layer_ids": [1, 14],
-    "engram_num_embeddings": [384006168, 384016682],
-    "engram_max_ngram_size": 4,
-    "engram_vocab_size": 16000000,
-    "engram_n_heads": 8,
-    "engram_head_dim": 256,
-    "engram_pad_token_id": 2,
-    "engram_compressed_vocab_size": 99092,
-    "num_nextn_predict_layers": 3,
-    "dspark_block_size": 5,
-    "dspark_noise_token_id": 128799,
-    "dspark_target_layer_ids": [37, 38, 39],
-    "dspark_markov_rank": 256,
-    "dspark_n_routed_experts": 128,
-    "dspark_num_experts_per_tok": 3
-  },
-  "vision_config": {
-    "model_type": "deepseek_v41_vision",
-    "num_hidden_layers": 32,
-    "hidden_size": 1024,
-    "num_attention_heads": 16,
-    "intermediate_size": 2816,
-    "patch_size": 14,
-    "rope_theta": 10000,
-    "downsample_ratio": 3,
-    "max_image_tokens": 1024,
-    "min_pixels": 295936,
-    "max_wh_ratio": null
-  }
-}
-```
-
-`compress_ratios` 长度是 43：40 个 decoder/encoder 层再加 3 个 nextn 层（`num_nextn_predict_layers = 3`）。前两层 ratio 0，接着一长段 2，再一段 1，最后三个 0。层构造时只接受 `0, 1, 2, 4, 128`（`models/deepseek_v4.py` 约 1044–1057 行的 `assert`）。
-
-### 这些字段在启动时落到哪里
-
-| config 字段 | 启动时谁读 | 后果 |
-| --- | --- | --- |
-| `architectures[0] = DeepseekV41ForCausalLM` | `get_model_architecture` → `ModelRegistry.resolve_model_cls` | 实例化 `models/deepseek_v4.py` 的 `DeepseekV4ForCausalLM` |
-| `model_type = deepseek_v41` | `configs/deepseek_v41.py` 的 `DeepseekV41Config`；`get_config` 里 `normalize_deepseek_v41_config` | 文本/视觉拆成两个子 config |
-| `quantization_config` | `model_overrides/deepseek_v4.py` `_deepseek_v4_overrides` | `attention_backend` 被改成 `dsv4`，`page_size` 被改成 256。仅当设备是 CUDA、非 HIP、SM100、`fp8` + `weight_block_size=[32,32]` + `ue8m0` 时，dense GEMM 才改成 `flashinfer_cutedsl` |
-| `text_config.num_hidden_layers = 40` | 模型按层建 `DeepseekV4DecoderLayer` | 层号决定 `compress_ratios[layer_id]` |
-| `num_key_value_heads = 1` | 层 `__init__` assert | 不能靠把 KV 头切给 TP。多卡 attention 走 DP Attention 或 MLA 吸收，而不是 GQA 头切分 |
-| `n_routed_experts = 384`，`num_experts_per_tok = 6` | MoE gate | EP 把 384 个 expert 分到 `ep_size` 个 rank，每 token 6 个 |
-| `sliding_window = 128` | SWA 池 | 与 compress ratio 一起决定哪些层是窗口、哪些层是压缩 KV |
-| `engram_*` | `layers/engram.py`，层 id 1 和 14 | 两张约 3.84e8 行的表。`SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE=1` 把表放在 host（`environ.py`） |
-| `dspark_*`，`num_nextn_predict_layers = 3` | `speculative_hook.py` `_handle_dspark`，草稿模型 `models/deepseek_v4_dspark.py` | 只有 `--speculative-algorithm DSPARK` 合法。block size 与 config 的 5 对齐 |
-| `vision_config` | `DeepseekV4ForCausalLM.__init__`：`model_type == deepseek_v41` 且 `vision_n_layers > 0` 且未设 `language_model_only` | 构建 `models/deepseek_v41_vit.py` 的 ViT 和 Aligner |
-| `max_position_embeddings = 1048576` | `ModelConfig` 的 context length | YaRN：`rope_scaling.factor = 16`，原始 65536 |
-
-魔搭 README 对这份权重的自述（元数据里的 ReadMe，不是本仓库文档）是：552B backbone、上下文最多一百万 token、Causal Encoder-Decoder（20 层 encoder + 20 层 decoder）。这和 `num_hidden_layers = 40`、`max_position_embeddings = 1048576` 对得上。CED 的含义在实现里是：decoder 的全局 KV 来自 encoder 隐状态的投影，而不是每层各自堆一份全局 KV。压缩比数组前半段大量为 2、后半段为 1，就是这条 cache 压缩路径的层配置。
-
-## 1.1 续：从命令行到内存池
-
-下面是默认 HTTP、rank 0、不走 Rust server 的路径。
+## 总流程
 
 ```mermaid
 flowchart TD
-  A["sglang.cli.main.main"] --> B["cli.serve.serve"]
-  B --> C["prepare_server_args"]
-  C --> D["launch_server.run_server"]
-  D --> E["ServerArgs.resolve_once"]
-  E --> F["run_resolution_pipeline"]
-  D --> G["http_server.launch_server"]
-  G --> H["Engine._launch_subprocesses"]
-  H --> I["PortArgs.init_new"]
-  H --> J["_launch_scheduler_processes"]
-  J --> K["run_scheduler_process"]
-  K --> L["Scheduler.__init__"]
-  L --> M["init_model_worker"]
-  M --> N["TpModelWorker / ModelRunner.load_model"]
-  M --> O["init_memory_pools"]
-  O --> P["KVCacheConfigurator.configure"]
-  L --> Q["build_kv_cache 挂上 radix"]
-  K --> R["pipe: status=ready"]
-  H --> S["DetokenizerManager"]
-  H --> T["init_tokenizer_manager"]
-  H --> U["uvicorn"]
+  S0["S0 sglang serve"] --> S1["S1 prepare_server_args"]
+  S1 --> S2["S2 resolve_once"]
+  S2 --> S3["S3 _launch_subprocesses"]
+  S3 --> S5["S5 load_model"]
+  S5 --> S6["S6 KV 池 + radix"]
+  S6 --> Ready["pipe status=ready"]
+  S3 --> S4["S4 TokenizerManager"]
+  Ready --> S7["S7 HTTP"]
+  S4 --> S7
+  S7 --> S8["S8 generate_request"]
+  S8 --> S9["S9 event_loop"]
+  S9 --> S10["S10 forward"]
+  S10 --> S9
+  S9 --> S11["S11 detokenize + SSE"]
 ```
 
-### 参数
+| 阶段 | 角色 | 做完的工作 | 交给下游 |
+| --- | --- | --- | --- |
+| S0 | `cli.serve.serve` | 区分 LLM / 扩散，`load_plugins`，位置参数改成 `--model-path` | argv |
+| S1 | `prepare_server_args` | argparse，可选 YAML `--config`，得到未解析的 `ServerArgs` | 原始字段 |
+| S2 | `run_resolution_pipeline` | 改写默认、拒绝非法组合，然后封口 | 解析后的视图 `resolving_view` |
+| S3 | `Engine._launch_subprocesses` | 端口、scheduler 子进程、detokenizer、可选 DP controller | ZMQ 名字，子进程 pid |
+| S4 | `init_tokenizer_manager` | 分词器、chat template、reasoning/tool parser | 主进程里的 `TokenizerManager` |
+| S5 | `ModelRunner.load_model` | `get_config`，注册表找到 `DeepseekV4ForCausalLM`，加载权重 | `self.model` |
+| S6 | `KVCacheConfigurator.configure` | 用剩余显存算页数，V4 用 `DeepSeekV4TokenToKVPool`，再 `build_kv_cache` 挂树 | 池 + `tree_cache` |
+| S7 | FastAPI | 路由到原生生成或 OpenAI serving | `GenerateReqInput` 或管理调用 |
+| S8 | `TokenizerManager.generate_request` | 模板展开、分词、多模态特征，ZMQ 送出 | `TokenizedGenerateReqInput` |
+| S9 | `event_loop_normal` 或 overlap | 收请求、`get_next_batch_to_run`、处理结果 | `ScheduleBatch` |
+| S10 | `forward_batch_generation` | `ForwardBatch`，写 KV，采样 | token id 与 logprob |
+| S11 | `DetokenizerManager` | 文本块，唤醒 `_stream_one_response` | SSE |
 
-1. `python/pyproject.toml` 把命令 `sglang` 指到 `sglang.cli.main:main`。`serve` 进入 `cli/serve.py`。位置参数会被改成 `--model-path`。
-2. `prepare_server_args`（`server_args.py`）建 argparse，`ServerArgs.add_cli_args`，可选 `--config` YAML 合并，然后 `ServerArgs.from_cli_args`。这一步**不**解析模型相关默认值。
-3. `launch_server.run_server` 先处理 gRPC 的 `tokenizer_path`，再 `resolve_once()`。
-4. `resolve_once` 调 `run_resolution_pipeline`（`arg_groups/pipeline.py`）。流水线按固定顺序跑 hook：模型路径、PD、显存、`handle_model_specific_adjustments`、attention、MoE a2a、`handle_speculative_decoding`。失败不可在同一对象上重试。
-5. 对这份 config，`_deepseek_v4_overrides` 写入 `attention_backend=dsv4`、`page_size=256`。`validate_deepseek_v41_features` 拒绝 PP、two-batch overlap、非 DSPARK 的投机、HiSparse、unified KV triton。
+`node_rank >= 1` 的进程只做 S3 的 scheduler 半段和 S5–S6，不起 HTTP。`SGLANG_RUST_SERVER` 时主进程不做 S4/S7。
 
-`run_server` 之后的分支：
+## S0 命令
 
-| 条件 | 去哪 |
-| --- | --- |
-| `encoder_only` | `disaggregation/encoder` 的 HTTP 或 gRPC |
-| `smg_grpc_mode` | `entrypoints/grpc_server.py` `serve_grpc` |
-| `use_ray` | `srt/ray/http_server.py` |
-| 其余 | `entrypoints/http_server.py` `launch_server` |
+`python/pyproject.toml` 把 `sglang` 指到 `sglang.cli.main:main`。`serve` 进 `cli/serve.py`。`--model-type` 为 `auto` 时 `ServeBackendRegistry.auto_detect` 选择 LLM 或扩散。LLM 调用 `launch_server.run_server`。`python -m sglang.launch_server` 仍可用，会先 `load_plugins` 再 `prepare_server_args`。
 
-### 三个进程
+`run_server` 在 `resolve_once` 之后分叉：`encoder_only` 去 encoder 进程；`smg_grpc_mode` 去 `grpc_server.serve_grpc`；`use_ray` 去 Ray HTTP；其余去 `http_server.launch_server`。
 
-`http_server.launch_server` 调 `Engine._launch_subprocesses`：
+## S1 声明默认
+
+`ServerArgs.add_cli_args` 用 `add_cli_args_from_dataclass` 把 `arg_groups/fields/` 里的 `A[...]` 注册成旗标。少量旗标手写在 `add_cli_args`：`--config`、动态 choices 的 `--sampling-backend` / `--reasoning-parser` / `--tool-call-parser`，以及废弃的 `--disable-cuda-graph`、`--enable-dp-attention`。
+
+这一步结束时，DeepSeek 相关的默认还是声明值：`attention_backend` 仍可能是 `auto`，`page_size` 还没变成 256。不要用 S1 的值解释运行时行为。
+
+## S2 解析
+
+`resolve_once` 只成功一次。失败对象不能重试。成功之后给字段赋值会在 `ServerArgs.__setattr__` 里抛错。改写必须走 `declare_resolution`，记在 `_resolved_overrides`。
+
+hook 全表在 [调研笔记/解析流水线.md](调研笔记/解析流水线.md)。和 V4.1-Flash 直接相关的几步：
+
+| 步骤 | 函数 | 对这份模型做的事 |
+| --- | --- | --- |
+| 模型特化 | `handle_model_specific_adjustments` → `model_overrides/deepseek_v4.py` | `attention_backend=dsv4`，`page_size=256`。仅 CUDA、非 HIP、SM100、FP8 块 32×32 且 `ue8m0` 时，dense GEMM 改成 `flashinfer_cutedsl` |
+| V4.1 特征 | `validate_deepseek_v41_features` | 拒绝非 DSPARK 的投机、HiSparse、unified KV triton、two-batch overlap、PP |
+| attention DP | `handle_data_parallelism` | `tp` 必须整除 `attn_dp`；`dp_size` 与 `attn_dp_size` 不能同时大于 1；保守系数乘 0.3；chunk 大小除以 `attn_dp` |
+| prefill CP | `handle_context_parallelism` 与 `validate_deepseek_v4_cp` | HIP 上 V4.1、多节点、`tp>8` 都会失败 |
+| MoE | `handle_a2a_moe` 触发的 `_a2a_ep_size` | `mori` / `deepep` 等把 `ep_size` 改成 `tp_size` |
+| 投机 | `handle_speculative_decoding` → `_handle_dspark` | 草稿路径、`num_steps=1`、DP attention 时的后端白名单 |
+| 封口后的检查 | `check_server_args` | `(tp*pp) % nnodes == 0`；多节点禁止模型副本 DP |
+
+## 配置字段怎样落到 S5
+
+| config 字段 | 值 | 谁消费 | 影响的阶段 |
+| --- | --- | --- | --- |
+| `architectures` | `DeepseekV41ForCausalLM` | `get_model_architecture` | S5。运行时类是 `models/deepseek_v4.py` 的 `DeepseekV4ForCausalLM`，映射在 `configs/deepseek_v41.py` |
+| `model_type` | `deepseek_v41` | `DeepseekV41Config`，`normalize_deepseek_v41_config` | S5 拆成 text / vision |
+| `quantization_config` | fp8、块 32×32、`ue8m0`，专家 `fp4` | V4 override | S2 选 GEMM；S5 选权重 loader |
+| `num_hidden_layers` | 40 | 逐层建模块 | S5。另有 3 层 next-n，给 DSPARK，不是 `--speculative-algorithm NEXTN` |
+| `num_key_value_heads` | 1 | 层构造 assert | S10 不能按 GQA 把头切给 TP |
+| `num_attention_heads` / `head_dim` | 64 / 512 | Q 投影 | S10。`q_lora_rank=1280`，`o_lora_rank=1024` |
+| `n_routed_experts` / `num_experts_per_tok` | 384 / 6 | MoE gate | S10。EP=16 时每 rank 24 个专家 |
+| `scoring_func` / `topk_method` | `sqrtsoftplus` / `noaux_tc` | `layers/moe/topk.py` 的 `TopKConfig` | S10 路由 |
+| `compress_ratios` | 0/1/2 的层数组，长度覆盖 40+3 | 层 `__init__`，只接受 0、1、2、4、128 | S6 的池要同时放下压缩 KV 和 SWA |
+| `sliding_window` | 128 | SWA 池 | S6、S10 |
+| `engram_*` | 层 1 和 14，两张约 3.84e8 行的表 | `layers/engram.py` | S5 建表。测试用 `SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE` 把表放 host |
+| `dspark_*` | block 5，目标层 37–39，草稿专家 128 | `_handle_dspark`，`models/deepseek_v4_dspark.py` | S2 校验，S5 建 draft worker |
+| `vision_config` | 32 层 ViT，patch 14 | `DeepseekV4ForCausalLM.__init__` | S5。`--language-model-only` 则不建 |
+| `max_position_embeddings` | 1048576 | `ModelConfig` 上下文 | S8 拒超长。YaRN factor 16，原始 65536 |
+
+魔搭 README 写的是 552B backbone、最多一百万 token、20 层 encoder 加 20 层 decoder。这和 40 层、上下文 1048576 一致。decoder 的全局 KV 来自 encoder 隐状态，而不是每层各留一份全长 KV，所以 `compress_ratios` 前半大量为 2、后半为 1。
+
+## S3 进程
+
+`http_server.launch_server` 调 `Engine._launch_subprocesses`。
 
 1. 再次 `resolve_once`（已完成则返回）。
-2. `check_server_args`（`validation_hook.py`）：`(tp_size * pp_size) % nnodes == 0`；`dp_size > 1` 且 `nnodes != 1` 直接 assert。
-3. `publish(..., role="tokenizer")`，`PortArgs.init_new` 分配 ZMQ。单机默认 Unix IPC；attention DP 改用 TCP。
-4. `_launch_scheduler_processes`：按 TP×PP 起 `mp.Process(target=run_scheduler_process)`。`num_dp_ranks > 1` 时再起 `DataParallelController`。
-5. `node_rank >= 1` 的进程只等 scheduler，不起 HTTP。
-6. rank 0 起 detokenizer，再 `init_tokenizer_manager`，然后等 scheduler 的 pipe 消息 `status == ready`。
+2. `publish(role="tokenizer")`。`PortArgs.init_new` 分配 ZMQ。单机默认 Unix 套接字；attention DP 改 TCP，因为多个 scheduler 不在同一网络命名空间的假设下仍要互通。`nccl_port` 为空则选临时端口以下的空闲端口。
+3. `_launch_scheduler_processes` 按 TP×PP 起 `mp.Process(run_scheduler_process)`。`num_dp_ranks = dp_size * attn_dp_size`。大于 1 时再起 `DataParallelController`。attention DP 不增加 GPU，但增加 scheduler。
+4. rank 0 起 detokenizer（`DetokenizerManager.event_loop`），再 S4。
+5. `wait_for_ready` 读 pipe。消息来自 `Scheduler.get_init_info`，此时 S5 和 S6 已经结束。
 
-`run_scheduler_process`（`scheduler.py`）：`publish(role="scheduler")` → `Scheduler(...)` → `pipe_writer.send(get_init_info())` → `run_event_loop()`。父进程看到 ready 时，权重、KV 池和 CUDA graph 已经在子进程里建完。
+子进程入口 `run_scheduler_process`：`publish(role="scheduler")` → `Scheduler(...)` → `pipe_writer.send` → `run_event_loop`。
 
-### Tokenizer
+## S4 Tokenizer
 
-`init_tokenizer_manager`（`engine.py`）构造 `TokenizerManager`，再 `TemplateManager.initialize_templates`。`--reasoning-parser auto` / `--tool-call-parser auto` 会按 chat template 写回具体解析器。V4.1 的名字在 `reasoning_parser_names.py` 里是 `deepseek-v41`。
+`init_tokenizer_manager` 构造 `TokenizerManager`，再 `TemplateManager.initialize_templates`。`--reasoning-parser auto` 和 `--tool-call-parser auto` 按模板写回具体名字。V4.1 的 reasoning 名字是 `deepseek-v41`（`reasoning_parser_names.py`）。
 
-`TokenizerManager.__init__`：`ModelConfig.from_server_args` → `get_tokenizer` 或 `get_mm_processor` → ZMQ PUSH 到 scheduler、PULL 从 detokenizer。
+`TokenizerManager.__init__`：`ModelConfig.from_server_args`，多模态用 `get_mm_processor`，否则 `get_tokenizer`。ZMQ PUSH 到 scheduler，PULL 从 detokenizer。
 
-### 模型与池
+## S5 与 S6 模型与池
 
-`Scheduler.init_model_worker`：
+`Scheduler.init_model_worker` 的顺序：
 
-1. `TpModelWorker` → `ModelRunner`。
-2. `ModelRunner.initialize` → `load_model`。`get_config`（`utils/hf_transformers/config.py`）读 `config.json`。V4.1 走 `normalize_deepseek_v41_config`。
-3. `init_memory_pools` → `tp_worker.alloc_memory_pool` → `ModelRunner.alloc_memory_pool` → `KVCacheConfigurator.configure`。
-4. `_profile_available_bytes`：加载后的空闲显存减去 static slack，得到 KV 预算。
-5. V4 走 `_build_dsv4_kv_pool`，GPU 上是 `DeepSeekV4TokenToKVPool`。统一内存池路径明确排除 DeepSeek-V4。
-6. 回到 scheduler，`kv_cache_builder.build_kv_cache` 在已有 token 池上挂 `req_to_token_pool` 和 radix/tree。
+```mermaid
+flowchart TD
+  A["TpModelWorker"] --> B["ModelRunner.initialize / load_model"]
+  B --> C["maybe_init_draft_worker"]
+  C --> D["init_memory_pools"]
+  D --> E["init_all_attention_backends"]
+  E --> F["init_all_cuda_graphs"]
+  F --> G["build_kv_cache 挂 tree_cache"]
+```
 
-Engram 不在 KV 池里。它是层内的 n-gram 表。测试注释（`test/dsv41_flash_common.py`）写明两张表大约 189 GiB FP8，所以 GB300 双卡测试把 `SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE` 设为 1。144GB 的卡同样放不下两张完整表，启动 V4.1-Flash 时应打开这个环境变量，除非你确认权重分片后的表已经按 rank 切开并且放得下。
+`get_config`（`utils/hf_transformers/config.py`）读 JSON。V4.1 走 `normalize_deepseek_v41_config`。权重架构经 `ModelRegistry.resolve_model_cls`。
 
-## 1.2 HTTP 请求怎么走
+`KVCacheConfigurator.configure`：`_profile_available_bytes` 在加载后读空闲显存，减去 static 比例和多模态预留，得到 KV 预算；`_init_pools` 里 V4 走 `_build_dsv4_kv_pool`。统一内存池明确排除 DeepSeek-V4。页大小已被 S2 改成 256，所以 S8/S9 的前缀命中按 256 token 对齐。
 
-路由都在 `http_server.py` 的 FastAPI `app` 上。OpenAI serving 对象在 `lifespan` 里挂到 `app.state`。
+Engram 不在 KV 池里。两张表按测试注释大约 189 GiB FP8。144GB 的卡放不下完整表，需要 host 表环境变量，除非确认分片之后放得下。
 
-| 路径 | 处理函数 | 下游 |
+父进程看到 ready，表示池和（若开启）CUDA graph 已经建完。
+
+## S7 HTTP 进入
+
+路由在 `http_server.py`。OpenAI 对象在 `lifespan` 里挂到 `app.state`。
+
+| 路径 | 处理函数 | 产出 |
 | --- | --- | --- |
-| `POST /generate` | `generate_request` → `serve_generate_request` | 直接 `TokenizerManager.generate_request(GenerateReqInput)` |
-| `POST /v1/chat/completions` | `openai_v1_chat_completions` | `OpenAIServingChat.handle_request` → 内部仍是 `GenerateReqInput` |
+| `POST /generate` | `serve_generate_request` | 直接 `GenerateReqInput` |
+| `POST /v1/chat/completions` | `openai_v1_chat_completions` | `OpenAIServingChat.handle_request` 再变成 `GenerateReqInput` |
 | `POST /v1/completions` | `openai_v1_completions` | `OpenAIServingCompletion` |
 | `POST /v1/embeddings` | `openai_v1_embeddings` | `EmbeddingReqInput` |
-| `POST /v1/messages` | `anthropic_v1_messages` | `AnthropicServing` |
-| `POST /api/chat` | `ollama_chat` | `OllamaServing` |
-| `GET /health`、`/server_info`、`/model_info` | 同名函数 | 不进生成循环 |
+| `POST /v1/messages` | Anthropic serving | 同样落到生成或计数 |
+| `POST /api/chat` | Ollama serving | 同上 |
+| `GET /health`、`/server_info` | 同名函数 | 不进 S9 |
 
-字段全集在 06。这里只跟一条 chat 请求。
+字段表在 06。chat 与原生生成在 S8 汇合。
+
+## S8 到 S11 一条请求
 
 ```mermaid
 sequenceDiagram
-  participant C as 客户端
-  participant H as FastAPI
-  participant TM as TokenizerManager
-  participant S as Scheduler
-  participant R as ModelRunner
-  participant D as Detokenizer
-  C->>H: POST /v1/chat/completions
-  H->>TM: generate_request(GenerateReqInput)
-  TM->>TM: _tokenize_one_request
-  TM->>S: ZMQ TokenizedGenerateReqInput
-  S->>S: handle_generate_request 构造 Req
-  loop event_loop_normal 或 overlap
+  participant H as S7 HTTP
+  participant T as S4 TokenizerManager
+  participant C as DataParallelController
+  participant S as S9 Scheduler
+  participant R as S10 ModelRunner
+  participant D as S11 Detokenizer
+  H->>T: generate_request
+  T->>T: 模板与分词
+  T->>C: 多个 attn DP 组时
+  C->>S: TokenizedGenerateReqInput
+  S->>S: handle_generate_request 建成 Req
+  loop 每一轮
     S->>S: get_next_batch_to_run
-    S->>R: forward_batch_generation / forward
+    S->>R: forward_batch_generation
+    R-->>S: 新 token
     S->>D: BatchTokenIDOutput
   end
-  D->>TM: BatchStrOutput
-  TM-->>H: chunk
-  H-->>C: SSE data: ... data: [DONE]
+  D->>T: BatchStrOutput
+  T-->>H: SSE
 ```
 
-1. `OpenAIServingBase.handle_request` 做校验，`_convert_to_internal_request` 得到 `GenerateReqInput`。chat template、tool parser、reasoning parser 在这一层。
-2. `TokenizerManager.generate_request`：`normalize_batch_and_arguments` → tokenize → `_dispatch_to_scheduler`。多 DP 时先到 `DataParallelController`，再进对应 scheduler。`routed_dp_rank` 可以让外部路由器指定组。
-3. Scheduler 的 `ingest_requests` → `SchedulerRequestReceiver.recv_requests`。`TokenizedGenerateReqInput` 分到 `handle_generate_request`，建成 `schedule_batch.py` 里的 `Req`，进 waiting queue。有 grammar 的请求先进 grammar 队列。
-4. `run_event_loop` → `dispatch_event_loop`。普通路径是 `event_loop_normal`：收请求、`get_next_batch_to_run`、`run_batch`、`process_batch_result`。overlap 路径把下一步的 CPU 调度和上一步的 GPU 重叠。PP、PD、MLX 另有循环。
-5. `TpModelWorker.forward_batch_generation` 建 `ForwardBatch`，PP 的最后一段调 `ModelRunner.forward` → `_forward_raw`。V4.1 的 forward 按层走 SWA / 压缩 KV / indexer / MoE。
-6. `process_batch_result` → `SchedulerOutputStreamer.stream_output` 把 `BatchTokenIDOutput` 发给 detokenizer。`DetokenizerManager.event_loop` 解成 `BatchStrOutput` 送回 tokenizer。
-7. `TokenizerManager.handle_loop` 唤醒 `_stream_one_response`。`/generate` 的 SSE 是 `data: ` + JSON，结束是 `data: [DONE]`。OpenAI chat 再包一层 chunk 对象。
+1. `OpenAIServingBase.handle_request` 校验，`_convert_to_internal_request` 得到 `GenerateReqInput`。chat template、tool、reasoning 在这一层完成，sampler 只看见 token。
+2. `generate_request`：`normalize_batch_and_arguments`，`_tokenize_one_request`，`_dispatch_to_scheduler`。`routed_dp_rank` 可以指定 attention DP 组。
+3. `ingest_requests` → `SchedulerRequestReceiver`。`handle_generate_request` 建 `schedule_batch.py` 的 `Req`。带 grammar 的请求先进 `GrammarManager` 队列。
+4. `dispatch_event_loop` 选择 `event_loop_normal`、`event_loop_overlap`，或 PP / PD / MLX 变体。普通一轮是收包、组 batch、`run_batch`、`process_batch_result`。
+5. `TpModelWorker.forward_batch_generation` 建 `ForwardBatch`。PP 的最后一段调 `ModelRunner.forward`。V4.1 按层走 SWA、压缩 KV、indexer、MoE。
+6. `SchedulerOutputStreamer` 把 `BatchTokenIDOutput` 送给 detokenizer。`DetokenizerManager.handle_batch_token_id_out` 得到 `BatchStrOutput`。
+7. `TokenizerManager.handle_loop` 唤醒 `_stream_one_response`。`/generate` 的帧是 `data: ` 加 JSON，结束是 `data: [DONE]`。
 
-`skip_tokenizer_init` 时 scheduler 直接把 token id 送回 tokenizer 侧，跳过 detokenizer。
+`skip_tokenizer_init` 时 scheduler 把 token id 直接送回，跳过 detokenizer。
 
-## 1.3 四机四卡：TP / DP / EP / PP / DCP / PCP
+`ForwardMode`（`forward_batch_info.py`）决定 S10 这一轮算什么：`EXTEND` 预填充，`DECODE` 每请求一个 token，`MIXED` 是 chunked prefill 时两者同批，`IDLE` 是 attention DP 下这组没有请求但仍要参加集合通信，`TARGET_VERIFY` / `DRAFT_EXTEND_V2` 是投机，`PREBUILT` 是 PD decode 侧 KV 已经传来。
 
-拓扑：**4 个节点，每节点 4 张 AMD/海光 BW1100，每张 144GB**。一共 16 张卡。
+## 四机四卡
 
-### 代码里有没有这块卡
+拓扑：4 节点 × 4 张 AMD/海光 BW1100，每张 144GB，共 16 卡。树里没有 `BW1100` 或 `Hygon`。下面假定运行时 `get_platform().is_hip` 为真。若不是 HIP，这些拒绝不会触发，初始化会走 CUDA 分支然后在别处失败。
 
-没有 `BW1100`、`Hygon` 字符串。海光 DCU 的软件栈通常冒充 HIP。本树里和这块卡相关的分支是 `get_platform().is_hip`，以及 `mori` 这个 MoE all-to-all 后端（AMD 的 MoRI）。如果运行时 `is_hip` 为假，下面所有 HIP 限制都不会触发，设备初始化会走 CUDA 分支然后在别的地方失败。下面的建议假定进程被识别为 HIP。
+### 每个轴在哪一阶段生效
 
-### 名字对照
+| 轴 | 字段 | 默认 | 增加 GPU | 定稿阶段 | 执行阶段 |
+| --- | --- | --- | --- | --- | --- |
+| TP | `tp_size` | 1 | 是，与 PP 相乘 | S1 声明，S3 起进程 | S10 切分线性层 |
+| PP | `pp_size` | 1 | 是 | S2 若大于 1 关 overlap；V4.1 直接拒绝 | S9 微批 |
+| 模型副本 DP | `dp_size` | 1 | 是 | S3 的 `check_server_args`：多节点禁止大于 1 | 每副本一套权重 |
+| DP Attention | `attn_dp_size` | 1 | 否 | S2 `handle_data_parallelism` | S3 多个 scheduler，S10 组内 attention |
+| EP | `ep_size` | 1 | 否 | S2，spanning 后端改成等于 `tp_size` | S10 all-to-all |
+| MoE DP | `moe_dp_size` | 1 | 否 | S2，与 `ep` 相乘必须回到 `tp` | S10 |
+| DCP | `dcp_size` | 1 | 否 | S2 `handle_decode_context_parallelism` | S10 decode KV |
+| PCP | `enable_prefill_cp` + `attn_cp_size` + `cp_strategy` | 关，宽度 1 | 否 | S2 | S10 预填充切序列 |
 
-代码里**没有** `pcp_size`。下表是笔记用词和源码符号的对应。
-
-| 笔记里的说法 | 源码 | 默认 | 增加 GPU 吗 |
-| --- | --- | --- | --- |
-| TP | `tp_size` / `--tp` | 1 | 是，和 PP 相乘 |
-| PP | `pp_size` / `--pp-size` | 1 | 是 |
-| DP（模型副本） | `dp_size` / `--dp-size` | 1 | 是，整份权重复制。`compute_world_size = dp * tp * pp` |
-| DP Attention | `attn_dp_size` / `--attn-dp-size` | 1 | 否。它把已有 TP 组再切开，每个子组一个 scheduler |
-| EP | `ep_size`，解析后为 `moe_ep_size` | 1 | 否。rank 仍在 TP 组里 |
-| MoE DP | `moe_dp_size` | 1 | 否 |
-| DCP | `dcp_size` / `--dcp-size` | 1 | 否。在每个 TP 组内切 decode 的 KV |
-| PCP（预填充上下文并行） | `enable_prefill_cp` + `attn_cp_size` + `cp_strategy` | 关，`attn_cp_size=1` | 否 |
-
-恒等式在 `runtime_context.py`：
+恒等式在 `runtime_context.py` 的 `derive_attn_tp_size`、`derive_parallel_widths`，并由 `ParallelContext._validate_parallel` 检查：
 
 ```text
-attn_tp_size = tp_size / attn_dp_size / attn_cp_size
-moe_tp_size  = tp_size / moe_ep_size / moe_dp_size
-tp_size == attn_tp * attn_dp * attn_cp
-tp_size == moe_ep * moe_dp * moe_tp
+attn_tp = tp / attn_dp / attn_cp
+moe_tp  = tp / moe_ep / moe_dp
 ```
 
-`ParallelContext._validate_parallel` 不满足就起不来。rank 布局：
+rank 布局：`tp_rank = (attn_dp_rank * attn_cp + attn_cp_rank) * attn_tp + attn_tp_rank`。连续 4 个 rank 在一个节点上时，`attn_dp=4`、`attn_tp=4` 表示每个节点一个 attention 组。
+
+### 建议配置
 
 ```text
-tp_rank = (attn_dp_rank * attn_cp_size + attn_cp_rank) * attn_tp_size + attn_tp_rank
+SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE=1
+SGLANG_RAGGED_VERIFY_MODE=static
+
+sglang serve deepseek-ai/DeepSeek-V4.1-Flash
+  --trust-remote-code
+  --nnodes 4 --node-rank $NODE_RANK --dist-init-addr $HEAD:29500
+  --tp 16 --pp-size 1 --dp-size 1
+  --attn-dp-size 4 --ep-size 16 --moe-a2a-backend mori
+  --enable-dp-lm-head
+  --speculative-algorithm DSPARK --speculative-dspark-block-size 5
+  --reasoning-parser auto --tool-call-parser auto
 ```
 
-连续 4 个 rank 落在一个节点上时，`attn_dp_size=4`、`attn_tp_size=4`、`attn_cp_size=1` 表示每个节点一个 attention DP 组，组内 4 路 TP。
+| 选择 | 原因 |
+| --- | --- |
+| `tp=16, pp=1, nnodes=4` | `(16*1)%4==0`，过 `check_server_args` |
+| `dp-size=1` | 多节点禁止模型副本 |
+| `attn-dp-size=4` | 节点内 4 路 attention，不把 KV 头为 1 的 attention 打到跨节点 all-reduce |
+| `mori` 且 EP=16 | spanning 列表会强制 `ep=tp`。DSPARK 加 DP attention 的白名单只有 `none`、`megamoe`、`mori` |
+| 不开 DeepEP | 不在上述白名单。`deepep_v2` 的 `direct` 还禁止 `nnodes>1` |
+| 不开 prefill CP | `validate_deepseek_v4_cp`：HIP 上的 V4.1、多节点、`tp>8` |
+| 不开 DCP | 与 prefill CP 互斥是另一条规则；`fi_a2a` 还要 CUDA Blackwell |
+| 不开 PP | `validate_deepseek_v41_features` |
+| block size 5 | config 的 `dspark_block_size`。草稿若打在主 checkpoint 里，hook 会把草稿路径设成 `model_path` |
+| ragged static | a2a 不是 `none` 时 `_handle_dspark` 要求这个环境变量 |
+| host Engram | 两张表远大于 144GB |
 
-### 会被拒绝或被改写的组合
+纯 TP（`attn-dp-size 1`，仍用 `mori`）能通过节点整除，但 16 路 attention 跨 4 个节点，而 KV 头是 1。树没有把它 assert 死。它合法，和模型形状拧着。
 
-| 组合 | 发生了什么 | 位置 |
+### 会失败的组合
+
+| 组合 | 结果 | 函数 |
 | --- | --- | --- |
-| `(tp * pp) % nnodes != 0` | assert | `validation_hook.check_server_args` |
-| `dp_size > 1` 且 `nnodes != 1` | assert，提示改用 `--attn-dp-size` | 同上 |
-| `dp_size > 1` 且 `attn_dp_size > 1` | `ValueError` | `parallel_hook.handle_data_parallelism` |
-| `tp_size % attn_dp_size != 0` | assert | `parallel_hook` |
-| `pp_size > 1` 且模型是 V4.1 | `ValueError`：V4.1 还不支持 PP | `validate_deepseek_v41_features` |
-| V4.1 上 `--speculative-algorithm` 不是 DSPARK | `ValueError` | 同上。更早的 V4 通用检查还允许 EAGLE topk=1，V4.1 这一关会再拒掉 |
-| V4.1 上 `--enable-two-batch-overlap` | `ValueError` | 同上 |
-| `dcp_size > 1` 且 `--enable-prefill-cp` | `ValueError` | `handle_decode_context_parallelism` |
-| `--dcp-comm-backend fi_a2a` 且不是 CUDA | `ValueError`（要 Blackwell MNNVL） | 同上 |
-| HIP 上 DeepSeek-V4 的 prefill CP，且 `nnodes > 1` | `ValueError` | `validate_deepseek_v4_cp` |
-| HIP 上 prefill CP 且模型是 V4.1 | `ValueError` | 同上，`unsupported` 列表里写了 DeepSeek-V4.1 |
-| HIP 上 prefill CP 且 attention 不是双相 `dsv4` | `ValueError` | 同上 |
-| V4 zigzag CP 且不是 NPU | `ValueError`。CUDA/HIP 只能 `interleave` | 同上 |
-| 非 NPU 的 V4 CP 且 `attn_dp_size != 1` | assert “dp attention is not supported” | 同上 |
-| 非 NPU 的 V4 CP 且 `tp_size > 8` | assert，注释写跨机 CP 有精度问题 | 同上 |
-| `moe_a2a_backend` 属于 spanning 集合（含 `deepep`、`deepep_v2`、`mori`、`megamoe`…）且 `ep_size != tp_size` | **改写** `ep_size = tp_size`，打日志 | `overrides.py` `_a2a_ep_size` |
-| `deepep_v2_mode=direct` 且 `nnodes > 1` | `ValueError`，要改 `hybrid` | `moe_hook.py` |
-| `deepep_mode=normal` | 关掉 decode 和 prefill 的 CUDA graph | `moe_hook.py` |
-| DSPARK 且 `attn_dp_size > 1` 但没开 `--enable-dp-lm-head` | `ValueError` | `speculative_hook._handle_dspark` |
-| DSPARK + DP attention，非 NPU，a2a 不是 `none`/`megamoe`/`mori` | `ValueError`。因此 **deepep 与 DSPARK+DP attention 不能一起用** | 同上 |
-| 同上且 a2a 不是 `none`，环境变量不是 `SGLANG_RAGGED_VERIFY_MODE=static` | `ValueError` | 同上 |
-| `moe_dp_size > 1` 且 `pp_size != 1` | assert | `parallel_hook` |
-| `ep>1` 且 `moe_dp>1` 但 `ep * moe_dp != tp` | assert | 同上 |
-| `attn_cp_size != moe_dp_size` 且 `moe_dp_size != 1` | assert | 同上 |
-| FlashInfer MegaMOE 且 `attn_dp_size != tp_size` | assert，要纯 DP attention | `moe_hook.py` |
-
-旧旗标 `--enable-dp-attention` 没有独立语义。`parallel_hook` 把 `--dp-size N --enable-dp-attention` 改成 `attn_dp_size=N`、`dp_size=1`。
-
-### 这份拓扑上建议的配置
-
-目标：16 张卡跑 V4.1-Flash，attention 不跨节点切 KV（每节点 4 卡一组），MoE 用 HIP 上的 all-to-all 把 384 个 expert 摊开，并打开 config 里已经写好的 DSPARK。
-
-```bash
-# 每个节点各起一次，NODE_RANK=0..3
-# HEAD 是 rank 0 的地址
-export SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE=1
-export SGLANG_RAGGED_VERIFY_MODE=static
-
-sglang serve deepseek-ai/DeepSeek-V4.1-Flash \
-  --trust-remote-code \
-  --nnodes 4 \
-  --node-rank "$NODE_RANK" \
-  --dist-init-addr "$HEAD:29500" \
-  --tp 16 \
-  --pp-size 1 \
-  --dp-size 1 \
-  --attn-dp-size 4 \
-  --ep-size 16 \
-  --moe-a2a-backend mori \
-  --enable-dp-lm-head \
-  --speculative-algorithm DSPARK \
-  --speculative-dspark-block-size 5 \
-  --reasoning-parser auto \
-  --tool-call-parser auto
-```
-
-为什么是这组数：
-
-- `tp=16, pp=1, nnodes=4`：`(16*1)%4==0`，过 `check_server_args`。
-- `dp-size=1`：多节点禁止模型副本 DP。
-- `attn-dp-size=4`：`attn_tp=16/4/1=4`。四个连续 rank 在一个节点上，节点内做 attention，节点间不做 attention all-reduce。这和 `num_key_value_heads=1` 是匹配的。
-- `mori` 在 spanning 列表里，即使不写 `--ep-size 16` 也会被改成 16。写上是为了和日志对得上。`moe_tp=1`，每个 rank 只拿 `384/16=24` 个 routed expert。
-- 不用 `deepep`：DSPARK 加 DP attention 的白名单只有 `none`、`megamoe`、`mori`。DeepEP 是 NVIDIA 的 dispatcher；`deepep_v2` 的 `direct` 还明确禁止 `nnodes>1`。
-- 不开 prefill CP：HIP 上 V4.1 被 `validate_deepseek_v4_cp` 拒绝，多节点也被拒绝，且 `tp=16>8`。
-- 不开 DCP：和 prefill CP 互斥是另一条规则；`fi_a2a` 还要求 CUDA Blackwell。这份拓扑用不上 DCP。
-- 不开 PP：V4.1 直接拒绝。
-- DSPARK 的 block size 用 config 里的 `dspark_block_size=5`。草稿权重若打在主 checkpoint 里，`_handle_dspark` 会把 `speculative_draft_model_path` 设成 `model_path`；否则必须自己传。
-- `SGLANG_RAGGED_VERIFY_MODE=static`：a2a 不是 `none` 时 DSPARK 要求这个。
-- Engram host 表：两行 `engram_num_embeddings` 都超过 3.84 亿。测试文件按 FP8、每行 264 字节估算约 189 GiB。单卡 144GB 放不下完整表。
-
-纯 TP、不做 DP attention（`--attn-dp-size 1 --tp 16 --moe-a2a-backend mori`）能通过节点整除和 EP 改写，但 16 路 attention 会跨 4 个节点做集合通信，而 KV 头只有 1。本树没有把它 assert 死，它是合法但和模型形状拧着的配置。
-
-### 明确不要这样写
-
-```bash
-# 多节点模型副本 DP：validation_hook assert
---nnodes 4 --dp-size 4 --tp 4
-
-# 两种 DP 叠加：parallel_hook ValueError
---dp-size 2 --attn-dp-size 2 --tp 16
-
-# V4.1 禁止 PP
---tp 8 --pp-size 2
-
-# HIP + V4.1 + 多节点 prefill CP：validate_deepseek_v4_cp
---enable-prefill-cp --cp-strategy interleave --tp 16 --nnodes 4
-
-# DSPARK + DP attention + DeepEP：_handle_dspark 拒绝
---attn-dp-size 4 --moe-a2a-backend deepep --speculative-algorithm DSPARK
-
-# 跨节点的 deepep v2 direct
---moe-a2a-backend deepep_v2 --deepep-v2-mode direct --nnodes 4
-
-# V4.1 上的 EAGLE / MTP 旧名
---speculative-algorithm EAGLE
---speculative-algorithm NEXTN
-```
-
-`NEXTN` 在通用投机路径里常被折叠成 EAGLE（`speculative_hook` 的 alias）。对 V4.1 没有区别，两种都会在 `validate_deepseek_v41_features` 被拒绝。config 里的 `num_nextn_predict_layers` 是模型自带的 next-n 结构，供 DSPARK 使用，不是让你再开 `--speculative-algorithm NEXTN`。
-
-### 和 dp attention、DeepEP 的关系（一张图）
+| `dp-size 4` 且 `nnodes 4` | assert | `check_server_args` |
+| `dp-size>1` 且 `attn-dp-size>1` | ValueError | `handle_data_parallelism` |
+| `pp-size>1` 且 V4.1 | ValueError | `validate_deepseek_v41_features` |
+| 投机不是 DSPARK | ValueError | 同上。更早的 V4 检查还允许 EAGLE topk=1，V4.1 再拒掉 |
+| two-batch overlap | ValueError | 同上 |
+| HIP 上 V4.1 的 prefill CP | ValueError | `validate_deepseek_v4_cp` |
+| 非 NPU 的 V4 CP 且 `tp>8` 或 attention DP | assert | 同上 |
+| zigzag CP 且不是 NPU | ValueError | 同上 |
+| `dcp>1` 且 prefill CP | ValueError | `handle_decode_context_parallelism` |
+| `deepep_v2` direct 且多节点 | ValueError | `moe_hook` |
+| `deepep_mode=normal` | 关掉两相 CUDA graph | `moe_hook` |
+| DSPARK + DP attention 却用 deepep | ValueError | `_handle_dspark` |
+| 同上但没开 `--enable-dp-lm-head` | ValueError | 同上 |
+| `moe_dp>1` 且 `pp>1` | assert | `parallel_hook` |
+| `ep>1` 且 `moe_dp>1` 但乘积不等于 `tp` | assert | 同上 |
+| FlashInfer MegaMOE 且 `attn_dp != tp` | assert | `moe_hook` |
 
 ```mermaid
-flowchart TB
-  subgraph world["tp_size = 16 进程，4 节点 x 4 卡"]
-    direction LR
-    G0["attn DP 组 0\n节点 0\nattn_tp=4"]
-    G1["attn DP 组 1\n节点 1"]
-    G2["attn DP 组 2\n节点 2"]
-    G3["attn DP 组 3\n节点 3"]
+flowchart LR
+  subgraph n0["节点 0 attn DP 组"]
+    A0["attn_tp=4"]
   end
-  G0 --> EP["MoE EP = 16\nmori all-to-all\n每 rank 24 个 expert"]
-  G1 --> EP
-  G2 --> EP
-  G3 --> EP
-  EP -.-> X["deepep / deepep_v2\n与 DSPARK+DP attention 冲突\n或禁止 direct 跨节点"]
+  subgraph n1["节点 1"]
+    A1["attn_tp=4"]
+  end
+  subgraph n2["节点 2"]
+    A2["attn_tp=4"]
+  end
+  subgraph n3["节点 3"]
+    A3["attn_tp=4"]
+  end
+  A0 --> M["mori EP=16 每 rank 24 专家"]
+  A1 --> M
+  A2 --> M
+  A3 --> M
 ```
 
-每个 attention DP 组有自己的 scheduler 和自己的请求队列。MoE 仍看得到全部 16 个 rank，所以 expert 负载是全局的。`schedule_conservativeness` 在打开 attention DP 时会被乘 0.3（`handle_data_parallelism`），chunked prefill 的块大小会除以 `attn_dp_size`。这些是解析阶段的副作用，不是你在 CLI 里写的默认值。
+打开 attention DP 之后，S2 还会把 `schedule_conservativeness` 乘 0.3，把 `chunked_prefill_size` 除以 4。这是副作用，不是你在命令行里写的那个默认值。每个组有自己的 radix，相同前缀打到两个组会算两次。外部路由要用 `routed_dp_rank` 或 `routing_key` 把前缀粘在一个组上。

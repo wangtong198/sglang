@@ -1,83 +1,79 @@
 # 08 Radix 前缀缓存
 
-## 为什么是树
+前缀树在 S6 挂到 scheduler，在 S9 的 `get_next_batch_to_run` 之前做匹配，在请求结束时 `checkpoint`。它不是 S7 的 HTTP 缓存。
 
-两个请求共享系统提示、后面的用户内容不同。块哈希缓存要么整段命中，要么整段重算。Radix 按 token 往下走，分叉点之前的页只存一份，分叉之后各自延长。
+## 目的
 
-v0.5.23 里有两层实现：
+两条请求共享系统提示、后面的用户内容不同。整段哈希要么全中要么重算。树按 token 往下走，分叉点之前的页只有一份。
 
 | 类 | 文件 | 角色 |
 | --- | --- | --- |
-| `RadixCache` | `mem_cache/radix_cache.py` | 经典前缀树 |
-| `UnifiedRadixCache` | `mem_cache/unified_radix_cache.py` | 现在调度器默认挂上的树，能接分层存储 |
-| `BasePrefixCache` | `mem_cache/base_prefix_cache.py` | `match_prefix` / `insert` / `checkpoint` 的接口 |
+| `RadixCache` | `mem_cache/radix_cache.py` | 经典树 |
+| `UnifiedRadixCache` | `mem_cache/unified_radix_cache.py` | 调度器现在挂上的实现，能接分层存储 |
+| `BasePrefixCache` | `base_prefix_cache.py` | `match_prefix` / `insert` / `checkpoint` |
+| HiCache | `hicache_hook.py` + 存储后端 | 给树加 host/L3，不是第三种匹配算法 |
 
-`HiCache`（`--enable-hicache`）在 `hicache_hook.py` 里和某类 unified external linker 互斥。它不是第三种树，而是给树加 host/L3 后端。
-
-## 节点上有什么
-
-`RadixKey`（`radix_cache.py`）：
-
-| 字段 | 含义 |
-| --- | --- |
-| `token_ids` | 这一段的 token |
-| `extra_key` | 额外命名空间。LoRA 名会进 KV 事件，避免不同适配器复用同一段 KV |
-| `cache_salt` | 调用方在请求里传的 `cache_salt`，把本来相同的前缀隔开 |
-| `is_bigram` | bigram 视图。长度为 `max(0, len-1)`，切片共享边界 token |
-| `limit` | 只使用前 `limit` 个 token，避免拷贝 |
-
-`TreeNode`：
-
-| 字段 | 含义 |
-| --- | --- |
-| `children` | `defaultdict(TreeNode)` |
-| `parent` | 父节点 |
-| `key` | 这段边的 `RadixKey` |
-| `value` | KV 页下标。`None` 表示已经被驱逐 |
-| `lock_ref` | 仍被运行中请求引用的次数。大于 0 不能驱逐 |
-| `last_access_time` / `creation_time` | LRU 和时间策略用 |
-| `hit_count` | 命中次数 |
-| `hash_value` | 每页的哈希 |
-| `priority` | 带优先级的驱逐 |
-
-`evicted` 属性就是 `value is None`。页可以被腾走，树节点还在，下次匹配到这里就知道要重算。
-
-## 一次请求上的调用
+## 原理
 
 ```mermaid
-sequenceDiagram
-  participant S as Scheduler
-  participant T as tree_cache
-  participant P as KV allocator
-  S->>T: match_prefix(RadixKey)
-  T-->>S: 命中长度 + 已有页
-  S->>P: 为未命中 token 分配页
-  S->>S: EXTEND 只算未命中部分
-  S->>T: checkpoint / insert
-  Note over T: lock_ref 降下来之后页才可驱逐
+flowchart TD
+  Q["S9 新 Req 的 token"] --> M["match_prefix"]
+  M --> H["命中长度 + 已有页"]
+  H --> A["allocator 只为未命中部分申请页"]
+  A --> E["ForwardMode.EXTEND 从第一个未命中 token 算"]
+  E --> C["结束或分段 checkpoint"]
+  C --> L["lock_ref 降到 0 之后才可驱逐"]
 ```
 
-具体函数：
+页大小参与边界。V4 在 S2 把 `page_size` 改成 256，短于一页的共享前缀不会变成可复用页。
 
-- 匹配：scheduler 在组 batch 前调用树上的 `match_prefix`。`schedule_policy.py` 也用同一棵树做 LPM。
-- 插入：`RadixCache.insert`，请求路径上是 `_insert_cache`。
-- 结束：`mem_cache/common.py` 的 `release_kv_cache` → `tree_cache.checkpoint(req, up_to=...)`。`RadixCache.checkpoint` 内部再 `_insert_cache`。`UnifiedRadixCache.checkpoint_into_tree` 按 token 段插入。
+## `RadixKey`
 
-页大小参与匹配边界。V4 的 override 把 `page_size` 设为 256，所以前缀命中以 256 token 对齐。短于一页的共享前缀不会变成可复用的页。
+| 字段 | 含义 |
+| --- | --- |
+| `token_ids` | 这一段 token |
+| `extra_key` | 额外命名空间。LoRA 名进入 KV 事件，避免不同适配器复用同一段 |
+| `cache_salt` | 请求字段。相同 token 也可以被隔开 |
+| `is_bigram` | bigram 视图，长度是 `max(0, len-1)`，切片共享边界 token |
+| `limit` | 只用前 `limit` 个 token，避免拷贝 |
+
+## `TreeNode`
+
+| 字段 | 含义 |
+| --- | --- |
+| `children` | 子节点 |
+| `parent` | 父 |
+| `key` | 这条边上的 `RadixKey` |
+| `value` | KV 页下标。`None` 表示页已驱逐，节点还在 |
+| `lock_ref` | 仍被运行中请求引用的次数。大于 0 不能驱逐 |
+| `last_access_time` / `creation_time` | LRU 和时间策略 |
+| `hit_count` | 命中次数 |
+| `hash_value` | 每页哈希，给外部事件 |
+| `priority` | 带优先级的驱逐 |
+| `evicted` | 就是 `value is None` |
+
+节点还在、页没了：下次匹配走到这里，知道要从这里重算，而不是假装命中。
+
+## 和 `ReqKvInfo` 的分工
+
+树上的页属于前缀，不属于某一个请求。`ReqKvInfo.cache_protected_len` 标记 `[0, 这里)` 归树。请求自己的增量在 `[cache_protected_len, kv_allocated_len)`。`cache_inserted_len` 保证同一次请求插入时，每个节点只计一次命中。
+
+`release_kv_cache` → `tree_cache.checkpoint(req, up_to=...)`。`RadixCache.checkpoint` 再走到插入。`UnifiedRadixCache.checkpoint_into_tree` 按 token 段插入。
 
 ## 驱逐
 
-`RadixCache.__init__` 用 `get_eviction_strategy`。策略名来自 `--radix-eviction-policy`，choices 在 `arg_groups/choices.py` 的 `RADIX_EVICTION_POLICY_CHOICES`。`disable` 时内部改用 `lru`，并且不建策略配置。
+`RadixCache.__init__` 用 `get_eviction_strategy`。名字来自 `--radix-eviction-policy`：`lru`、`lfu`、`slru`、`priority`、`tlru`（05 的 memory 节有官方句子的中文说明）。`disable` 时内部改用 `lru`，并且不记录。
 
-可驱逐的是 `lock_ref == 0` 且在 `evictable_leaves` 里的叶子。正在 decode 的请求把沿途节点锁住，所以不会把别人正在读的系统提示页抢走。显存不够时，allocator 先让树驱逐，再分配新页。这就是 `mem_fraction_static` 留白的原因：权重、图、激活之外，剩下的才是这棵树能占用的页。
+可驱逐的是 `lock_ref==0` 的叶子。正在 decode 的请求把沿途节点锁住，所以不会抢走别人正在读的系统提示。显存不够时先驱逐再分配。`mem_fraction_static` 留出的是权重、图、激活之外、这棵树能占用的那一份。
 
-## 和 DP attention、PD、会话的关系
+## 和并行、PD、会话
 
-- 每个 scheduler 有自己的 `tree_cache`。attention DP 的四个组不共享一棵树。同一条前缀打到两个组会算两次。外部路由器若要避免这件事，应使用请求上的 `routed_dp_rank` 或 `routing_key`，把相同前缀固定到一个组。`sgl-router` 的 KV-aware 路由做的就是这件事，它不在 worker 进程里。
-- PD 分离时 prefill 侧的树和 decode 侧的树不是同一块 GPU 内存。命中发生在 prefill；decode 收到的是传过来的 KV（`ForwardMode.PREBUILT`），不是 decode 本地 radix 的命中。
-- `cache_salt` 和 `extra_key` 会改变键。LoRA 请求默认不应命中基座模型的页。
-- V4.1 的 `--enable-encoder-swa-bounded-replay` 明确不支持 `enable_session_radix_cache`（`validate_deepseek_v41_features`）。会话级 radix 和 encoder 窗口重放是两条缓存路径，不要同时开。
+| 场景 | 行为 |
+| --- | --- |
+| attention DP | 每个 scheduler 一棵树。相同前缀打到两个组会算两次。用 `routed_dp_rank` 或路由器把前缀粘在一组 |
+| PD | 命中发生在 prefill。decode 收到的是传来的 KV（`PREBUILT`），不是 decode 本地树的命中 |
+| LoRA / `cache_salt` / `extra_key` | 改变键。不同适配器默认不应命中基座页 |
+| `--enable-encoder-swa-bounded-replay` | V4.1 明确不支持 `enable_session_radix_cache`。两条缓存路径不要同时开 |
+| `--disable-radix-cache` | 树不记录。LPM 会被策略层换掉。每次从零写 KV |
 
-## 关掉它
-
-`--disable-radix-cache` 让 `RadixCache.disable` 为真。树不再记录、不再驱逐，每次请求都从零写 KV。调度策略里依赖树的 LPM 会被 `SchedulePolicy` 调成不看缓存的策略。调试显存或对比首 token 延迟时用得上，生产上等于把 08 整篇关掉。
+`SchedulePolicy` 的 LPM 用的是同一棵树。调度顺序和 KV 复用是一件事的两面：先选最长命中，第 2 步的 extend 就更短。
