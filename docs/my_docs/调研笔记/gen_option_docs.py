@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Rebuild 05/06 with detailed Chinese explanations. Run from repo root."""
+"""旧的生成器。现在请用同目录的 render_specific.py。
+
+它读取 zh_parts/*.json 里按字段写好的中文，缺任何字段都会失败，
+避免再把命名空间说明抄进每一行。
+"""
 
 from __future__ import annotations
 
