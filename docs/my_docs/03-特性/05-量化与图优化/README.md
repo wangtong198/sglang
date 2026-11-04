@@ -1,17 +1,18 @@
 # 量化与图优化
 
-占位。量化与权重格式、CUDA graph、编译、融合核。不写捕获步骤。
+量化、权重格式、CUDA graph、编译、融合核、稠密 GEMM。图的捕获步骤在启动篇 F116、F117、F195。
 
-| ID | 特性 |
+运行时行为 **源码路径推断，未实测**。
+
+| 页 | ID |
 | --- | --- |
-| B31 | CUDA graph |
-| B32 | Piecewise / breakable 图 |
-| B33 | torch.compile |
-| B34 | 量化 |
-| B35 | 权重格式 |
-| B59 | Megakernel / Monokernel |
-| B90 | 稠密 GEMM runner |
+| [01-CUDA-graph](01-CUDA-graph.md) | B31、B32 |
+| [02-torch-compile](02-torch-compile.md) | B33 |
+| [03-量化](03-量化.md) | B34 |
+| [04-权重格式](04-权重格式.md) | B35 |
+| [05-融合核](05-融合核.md) | B59 |
+| [06-稠密GEMM](06-稠密GEMM.md) | B90 |
 
-图在启动链上的位置是 F116、F117 和 F195，归 [02-流程/01-启动](../../02-流程/01-启动/README.md)。量化方法名单在清单 B34，展开时从 `QUANTIZATION_CHOICES` 核对。旗标在 [附录 05](../../附录-选项索引/05-Server选项大全.md)。
+`--moe-runner-backend` 属于 [04-MoE与DeepEP](../04-MoE与DeepEP/04-GEMM-runner.md)，不在稠密 GEMM 页里。
 
 返回 [特性目录](../README.md)。

@@ -1,21 +1,23 @@
 # 投机与 MTP
 
-占位。清单 B01–B10，加上复审补的 B91。每种算法的验证数据结构不同，见清单里 `SpecInputType` 那条开放问题；本页不展开。
+目标模型验证草稿多猜出来的 token。启动时建草稿 worker 是 F113。V4.1 只放行 DSPARK，拒绝表归 [05-模型](../../05-模型/04-模型与特性矩阵.md)。
 
-| ID | 特性 |
+运行时行为 **源码路径推断，未实测**。
+
+| 页 | ID |
 | --- | --- |
-| B01 | 投机框架 |
-| B02 | EAGLE / EAGLE3 |
-| B03 | NEXTN 别名 |
-| B04 | FROZEN_KV_MTP |
-| B05 | STANDALONE |
-| B06 | NGRAM |
-| B07 | DFLASH |
-| B08 | UNO |
-| B09 | DSPARK |
-| B10 | 解耦投机 |
-| B91 | 草稿 attention 后端 |
+| [00-框架](00-框架.md) | B01 |
+| [01-EAGLE](01-EAGLE.md) | B02 |
+| [02-NEXTN](02-NEXTN.md) | B03 |
+| [03-FROZEN-KV-MTP](03-FROZEN-KV-MTP.md) | B04 |
+| [04-STANDALONE](04-STANDALONE.md) | B05 |
+| [05-NGRAM](05-NGRAM.md) | B06 |
+| [06-DFLASH](06-DFLASH.md) | B07 |
+| [07-UNO](07-UNO.md) | B08 |
+| [08-DSPARK](08-DSPARK.md) | B09 |
+| [09-解耦投机](09-解耦投机.md) | B10 |
+| [10-草稿attention](10-草稿attention.md) | B91 |
 
-草稿 worker 在启动链上的位置是 F113，归 [02-流程/01-启动](../../02-流程/01-启动/README.md)。V4.1 只放行 DSPARK 是 F197，归 [05-模型](../../05-模型/04-模型与特性矩阵.md)。
+`SpecInputType` 按算法分开。`is_eagle()` 目前含 `FROZEN_KV_MTP`，源码 FIXME 写明 scheduler 支持未立稳。
 
 返回 [特性目录](../README.md)。
