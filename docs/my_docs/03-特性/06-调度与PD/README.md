@@ -14,6 +14,7 @@
 | B52 | 连续 decode |
 | B64 | Beam search |
 | B73 | Prefill delayer |
+| B95 | Multi-item scoring |
 
 循环和 `ForwardMode` 是 F150–F164、F179–F188，归 [02-流程/03-调度与推理](../../02-流程/03-调度与推理/README.md)。PD 作为角色分裂是 D13、D14，归 [04-分布式/05-分离多机与通信](../../04-分布式/05-分离多机与通信.md)。
 

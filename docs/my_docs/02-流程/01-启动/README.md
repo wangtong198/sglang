@@ -11,7 +11,8 @@
 | S1 声明 | F25–F30 | A.3 | `ServerArgs` 怎么来，封口前还没有改写 |
 | S2 hook 全序 | F31–F91 | A.4 | `run_resolution_pipeline` 的次序。以清单本表和 `pipeline.py` 为准 |
 | 进程拓扑 | F92–F104 | A.5 | `Engine._launch_subprocesses` |
-| 分布式 init 插在哪 | F105–F110 | A.6 | 发生在 `Scheduler.__init__`、早于 `init_model_worker`。轴的定义归 D01–D18 |
+| 分布式 init 插在哪 | F105–F110 | A.6 | 发生在 `Scheduler.__init__`、早于 `init_model_worker`。轴的定义归 D01–D20 |
+| 复审补步 | F205、F206 | A.16 | CP-TP 组共享落在 S2 的 context parallelism；草稿架构改名落在 `ModelConfig` |
 | 模型与权重 | F111–F125 | A.7 | `init_model_worker` 与 `ModelRunner.initialize` 的次序 |
 | KV 与前缀树 | F126–F135 | A.8 | 池和树不是同一步 |
 | ready | F136–F139 | A.9 | pipe、`wait_for_ready`、健康检查 |

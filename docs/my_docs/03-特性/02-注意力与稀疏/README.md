@@ -17,6 +17,14 @@
 | B58 | Engram |
 | B61 | 确定性推理 |
 | B62 | Batch invariant |
+| B76 | mHC |
+| B77 | KDA |
+| B78 | GDN |
+| B79 | Lightning attention |
+| B80 | Short conv |
+| B81 | Qwen4 PLE |
+| B83 | DSA / DSV4 稀疏 prefill 核 |
+| B84 | DSA cache 按 CP 切层 |
 
 V4.1 拒绝 HiSparse 是 F197，归 [05-模型](../../05-模型/04-模型与特性矩阵.md)。
 
