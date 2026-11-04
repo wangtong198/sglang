@@ -13,6 +13,7 @@
 | B45 | Elastic EP |
 | B46 | DWDP |
 | B47 | Expert pack |
+| B94 | Waterfill |
 
 这些后端是 D08 的通信实现，并行轴在 [04-分布式/04-专家并行](../../04-分布式/04-专家并行.md)（含 F201）。清单的边界句：DeepEP / mori / megamoe 不另算一条并行轴。
 
