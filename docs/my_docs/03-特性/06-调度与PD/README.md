@@ -1,21 +1,19 @@
 # 调度与 PD
 
-占位。调度策略、重叠、prefill/decode 分离在特性表里的三行。事件循环的 F 号不在这里。
+调度策略、两种重叠、PD 的三种形态、beam、multi-item scoring。事件循环的 F 号在 [03-调度与推理](../../02-流程/03-调度与推理/README.md)。PD 的角色分裂作为轴在 [04-分布式/05-分离多机与通信](../../04-分布式/05-分离多机与通信.md)。
 
-| ID | 特性 |
+运行时行为 **源码路径推断，未实测**。
+
+| 页 | ID |
 | --- | --- |
-| B29 | Overlap schedule |
-| B30 | Two-batch overlap |
-| B37 | PD 分离 |
-| B38 | PD mux |
-| B39 | PD 角色切换 |
-| B50 | 优先级调度 |
-| B51 | 调度策略 |
-| B52 | 连续 decode |
-| B64 | Beam search |
-| B73 | Prefill delayer |
-| B95 | Multi-item scoring |
-
-循环和 `ForwardMode` 是 F150–F164、F179–F188，归 [02-流程/03-调度与推理](../../02-流程/03-调度与推理/README.md)。PD 作为角色分裂是 D13、D14，归 [04-分布式/05-分离多机与通信](../../04-分布式/05-分离多机与通信.md)。
+| [01-Overlap](01-Overlap.md) | B29 |
+| [02-TBO](02-TBO.md) | B30 |
+| [03-PD分离](03-PD分离.md) | B37 |
+| [04-PDmux](04-PDmux.md) | B38 |
+| [05-PD角色切换](05-PD角色切换.md) | B39 |
+| [06-优先级与策略](06-优先级与策略.md) | B50、B51 |
+| [07-连续decode与delayer](07-连续decode与delayer.md) | B52、B73 |
+| [08-Beam](08-Beam.md) | B64 |
+| [09-MIS](09-MIS.md) | B95 |
 
 返回 [特性目录](../README.md)。

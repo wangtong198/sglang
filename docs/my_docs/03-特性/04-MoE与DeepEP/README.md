@@ -1,20 +1,23 @@
 # MoE 与 DeepEP
 
-占位。专家计算、all-to-all 后端、专家负载和专家包。清单写明 a2a 与 GEMM runner 是两套枚举。本页不展开互斥条件。
+专家 all-to-all 与专家 GEMM 是两套枚举。并行轴在 [04-分布式/04-专家并行](../../04-分布式/04-专家并行.md)。域地图在 [00-域总览](00-域总览.md)。
 
-| ID | 特性 |
+运行时行为 **源码路径推断，未实测**。DeepEP 与弹性扩缩没有在本环境跑过。
+
+| 页 | ID |
 | --- | --- |
-| B19 | DeepEP |
-| B20 | mori |
-| B21 | 其它 a2a |
-| B22 | MoE GEMM runner |
-| B43 | Shared experts TP |
-| B44 | EPLB |
-| B45 | Elastic EP |
-| B46 | DWDP |
-| B47 | Expert pack |
-| B94 | Waterfill |
+| [00-域总览](00-域总览.md) | 本域全部 |
+| [01-DeepEP](01-DeepEP.md) | B19 |
+| [02-mori](02-mori.md) | B20 |
+| [03-其它a2a](03-其它a2a.md) | B21 |
+| [04-GEMM-runner](04-GEMM-runner.md) | B22 |
+| [05-Shared-experts-TP](05-Shared-experts-TP.md) | B43 |
+| [06-EPLB](06-EPLB.md) | B44 |
+| [07-Elastic-EP](07-Elastic-EP.md) | B45 |
+| [08-DWDP](08-DWDP.md) | B46 |
+| [09-Expert-pack](09-Expert-pack.md) | B47 |
+| [10-Waterfill](10-Waterfill.md) | B94 |
 
-这些后端是 D08 的通信实现，并行轴在 [04-分布式/04-专家并行](../../04-分布式/04-专家并行.md)（含 F201）。清单的边界句：DeepEP / mori / megamoe 不另算一条并行轴。
+DSPARK 加 attention DP 时，a2a 只允许 `none`、`megamoe`、`mori`。DeepEP 不在这三项里。
 
 返回 [特性目录](../README.md)。
